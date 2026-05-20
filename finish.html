@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AI 長照體適能與防護決策系統 - 個案資料庫版</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  
+  <style>
+    body { font-family: '微軟正黑體', sans-serif; background: #f0f4f8; color: #2c3e50; margin: 0; padding: 20px; display: flex; justify-content: center;}
+    .container { width: 100%; max-width: 1200px; }
+
+    /* 頂部標題 */
+    .header-box { position: relative; background: #ffffff; border-left: 8px solid #2980b9; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;}
+    .header-box h1 { margin: 0; color: #2c3e50; font-size: 26px; letter-spacing: 1px;}
+    .badge { background: #e8f8f5; color: #16a085; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; border: 1px solid #16a085;}
+    .db-upload-label { padding: 10px 15px; font-size: 14px; font-weight: bold; border: 2px solid #8e44ad; border-radius: 8px; background: #f4ecf7; color: #8e44ad; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 5px;}
+    .db-upload-label:hover { background: #d7bde2; color: #fff;}
+    #dbInput { display: none; }
+
+    .main-content { display: flex; flex-wrap: wrap; gap: 20px; }
+
+    /* 左側影像區 */
+    .left-panel { flex: 1.5; min-width: 450px; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 15px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .video-wrapper { position: relative; width: 100%; background: #000; border-radius: 10px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 480px; }
+    video { display: none; } 
+    canvas { width: 100%; display: block; object-fit: contain; }
+    #status-bar { margin-top: 15px; font-weight: bold; color: #34495e; font-size: 16px; text-align: center; background: #ecf0f1; padding: 10px; border-radius: 8px; width: 100%; box-sizing: border-box;}
+
+    /* 右側操作區 */
+    .right-panel { flex: 1; min-width: 350px; display: flex; flex-direction: column; gap: 15px; }
+    .mode-buttons { display: flex; gap: 10px; }
+    .mode-btn { flex: 1; padding: 12px; font-size: 16px; font-weight: bold; border: 2px solid #2980b9; border-radius: 8px; background: white; color: #2980b9; cursor: pointer; transition: 0.3s; }
+    .mode-btn.active { background: #2980b9; color: white; }
+
+    /* 💡 個案管理區塊 (新加入) */
+    .patient-box { background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 15px; padding: 15px; border-top: 5px solid #27ae60; }
+    .patient-header { font-weight: bold; font-size: 18px; color: #27ae60; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .patient-display { font-size: 16px; font-weight: bold; color: #2c3e50; background: #e8f5e9; padding: 10px; border-radius: 6px; margin-bottom: 10px; text-align: center; border: 1px dashed #27ae60;}
+    .patient-controls { display: flex; gap: 5px; }
+    .patient-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; font-family: monospace; text-transform: uppercase;}
+    .patient-btn { padding: 10px 15px; font-weight: bold; border: none; border-radius: 6px; background: #34495e; color: white; cursor: pointer; }
+    .patient-btn-new { background: #2980b9; }
+
+    /* 分析操作區 */
+    .action-box { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 15px; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    .task-select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #bdc3c7; border-radius: 8px; font-weight: bold; color: #2c3e50; font-family: '微軟正黑體', sans-serif;}
+    .upload-label { padding: 15px; font-size: 16px; font-weight: bold; border: 2px dashed #95a5a6; border-radius: 8px; background: #f8f9fa; color: #7f8c8d; cursor: pointer; text-align: center; display: none; transition: 0.2s; }
+    .upload-label:hover { background: #e2e6ea; border-color: #2980b9; color: #2980b9;}
+    #uploadInput { display: none; }
+
+    .start-btn { padding: 15px; font-size: 20px; font-weight: bold; border: none; border-radius: 8px; background: #27ae60; color: #fff; cursor: pointer; transition: 0.3s; width: 100%; display: none; box-shadow: 0 4px 6px rgba(39, 174, 96, 0.3);}
+    .start-btn:hover { background: #219653; }
+    .start-btn.running { background: #e74c3c; box-shadow: 0 4px 6px rgba(231, 76, 60, 0.3); }
+
+    /* 報告區 */
+    .report-box { flex-grow: 1; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 15px; padding: 25px; min-height: 250px; font-size: 15px; line-height: 1.6; color: #34495e; border-top: 6px solid #f39c12;}
+    .report-title { font-weight: bold; font-size: 20px; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-bottom: 15px; margin-top: 0; display: flex; align-items: center; gap: 10px;}
+    .cm-section { margin-bottom: 15px; }
+    .cm-header { font-weight: bold; color: #2980b9; font-size: 16px; margin-bottom: 5px;}
+    .cm-data { background: #f8f9fa; padding: 10px; border-radius: 6px; border-left: 4px solid #3498db; margin-bottom: 15px; font-family: monospace; font-size: 16px;}
+    .cm-advice { background: #fff8e1; padding: 15px; border-radius: 6px; border: 1px solid #ffe082; margin-bottom: 15px;}
+    .cm-plan { background: #e8f5e9; padding: 15px; border-radius: 6px; border: 1px solid #a5d6a7;}
+    .cm-rag { background: #f4ecf7; padding: 15px; border-radius: 6px; border: 1px solid #8e44ad; margin-bottom: 15px;}
+    .db-save-notice { text-align: right; font-size: 13px; color: #7f8c8d; margin-top: 10px; font-style: italic; }
+
+    /* 💡 Modal 視窗設計 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background: #fff; padding: 25px; border-radius: 10px; width: 90%; max-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+    .modal-content h3 { margin-top: 0; color: #2980b9; }
+    .modal-input-group { margin-bottom: 15px; }
+    .modal-input-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px;}
+    .modal-input-group input, .modal-input-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; font-family: '微軟正黑體', sans-serif;}
+    .modal-btn-group { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;}
+    .btn-cancel { padding: 10px 15px; background: #e0e0e0; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;}
+    .btn-confirm { padding: 10px 15px; background: #27ae60; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;}
+
+    /* 歷史紀錄彈窗 */
+    .history-list { max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 10px; background: #f9f9f9; }
+    .history-item { background: white; padding: 10px; border-radius: 6px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 13px; border-left: 4px solid #3498db;}
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header-box">
+    <div>
+        <h1>AI 長照體適能與防護決策系統</h1>
+        <div style="margin-top:5px;" class="badge">✔️ EHR 個案資料庫追蹤引擎 (v5.0)</div>
+    </div>
+    <label class="db-upload-label" id="dbBtnUI">📚 擴充外部文獻庫 (TXT)<input type="file" id="dbInput" accept=".txt"></label>
+  </div>
+
+  <div class="main-content">
+    <div class="left-panel">
+      <div class="video-wrapper">
+        <video id="live_video" playsinline muted></video>
+        <video id="import_video" playsinline muted></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+      </div>
+      <div id="status-bar">系統狀態：請選擇測試模式</div>
+    </div>
+
+    <div class="right-panel">
+      <div class="mode-buttons">
+        <button id="liveModeBtn" class="mode-btn active" onclick="switchMode('live')">📸 現場鏡頭</button>
+        <button id="importModeBtn" class="mode-btn" onclick="switchMode('import')">📁 導入影片</button>
+      </div>
+
+      <div class="patient-box">
+        <div class="patient-header">
+            👤 個案資料庫
+            <button class="patient-btn" style="background:#8e44ad; font-size:12px;" onclick="showHistory()">查看紀錄</button>
+        </div>
+        <div class="patient-display" id="currentPatientDisplay">尚未選擇個案 (測試結果將不被儲存)</div>
+        <div class="patient-controls">
+            <input type="text" id="patientSearch" class="patient-input" placeholder="輸入編號 (例: A001)">
+            <button class="patient-btn" onclick="searchPatient()">載入</button>
+            <button class="patient-btn patient-btn-new" onclick="openNewModal()">+ 新增</button>
+        </div>
+      </div>
+
+      <div class="action-box">
+        <select id="assessmentType" class="task-select">
+            <optgroup label="🩺 臨床防護與日常監測">
+                <option value="daily_posture">🚶‍♂️ 個案日常姿態分析 (步態/防跌)</option>
+                <option value="caregiver_posture">🧑‍⚕️ 照服員防護分析 (轉移位/生物力學)</option>
+            </optgroup>
+            <optgroup label="📊 高齡體適能指標 (SFT)">
+                <option value="chair_stand">🪑 30秒椅子坐立測驗 (下肢)</option>
+                <option value="arm_curl">💪 30秒手臂屈舉測驗 (上肢)</option>
+                <option value="single_leg">⚖️ 閉眼單足立測試 (平衡)</option>
+            </optgroup>
+        </select>
+        <label id="uploadArea" class="upload-label">
+          📁 點擊選擇個案影片檔案 (MP4/MOV)
+          <input type="file" id="uploadInput" accept="video/*" onchange="handleFileUpload(event)">
+        </label>
+        <button id="startBtn" class="start-btn" onclick="toggleAnalysis()">▶ 開始執行分析</button>
+      </div>
+
+      <div class="report-box">
+        <h3 class="report-title">📝 個管師綜合評估報告</h3>
+        <div id="reportArea">系統等待資料輸入中...<br><br>請先「建立/載入個案」，評估完成後數據將自動歸檔。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="newPatientModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>➕ 建立新個案資料</h3>
+        <div class="modal-input-group">
+            <label>個案姓名</label>
+            <input type="text" id="newName" placeholder="例如：王大明、李阿姨">
+        </div>
+        <div class="modal-input-group">
+            <label>生理性別 (將決定編號字首)</label>
+            <select id="newGender">
+                <option value="M">男性 (A開頭)</option>
+                <option value="F">女性 (B開頭)</option>
+            </select>
+        </div>
+        <div class="modal-btn-group">
+            <button class="btn-cancel" onclick="closeModal('newPatientModal')">取消</button>
+            <button class="btn-confirm" onclick="saveNewPatient()">建立並載入</button>
+        </div>
+    </div>
+</div>
+
+<div id="historyModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:500px;">
+        <h3 id="historyTitle">📁 歷史評估紀錄</h3>
+        <div class="history-list" id="historyList">
+            </div>
+        <div class="modal-btn-group">
+            <button class="btn-cancel" onclick="closeModal('historyModal')">關閉</button>
+        </div>
+    </div>
+</div>
+
+<script>
+  // ================= 💡 資料庫 (Local Storage) 引擎 =================
+  let patientDB = JSON.parse(localStorage.getItem('cdss_patients')) || [];
+  let historyDB = JSON.parse(localStorage.getItem('cdss_history')) || [];
+  let currentPatient = null;
+
+  function openNewModal() { document.getElementById('newPatientModal').style.display = 'flex'; }
+  function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+
+  function saveNewPatient() {
+      let name = document.getElementById('newName').value.trim();
+      let gender = document.getElementById('newGender').value;
+      if (!name) return alert("請輸入個案姓名！");
+
+      // 自動產生編號邏輯
+      let prefix = (gender === 'M') ? 'A' : 'B';
+      let existingCount = patientDB.filter(p => p.id.startsWith(prefix)).length;
+      let newId = prefix + String(existingCount + 1).padStart(3, '0'); // 例: A001
+
+      let newPatient = { id: newId, name: name, gender: gender, createdAt: new Date().toLocaleString() };
+      patientDB.push(newPatient);
+      localStorage.setItem('cdss_patients', JSON.stringify(patientDB));
+      
+      setCurrentPatient(newPatient);
+      closeModal('newPatientModal');
+      document.getElementById('newName').value = ""; // 清空輸入框
+      alert(`✅ 建檔成功！\n編號：${newId}\n姓名：${name}`);
+  }
+
+  function searchPatient() {
+      let queryId = document.getElementById('patientSearch').value.trim().toUpperCase();
+      if (!queryId) return alert("請輸入個案編號！");
+      
+      let patient = patientDB.find(p => p.id === queryId);
+      if (patient) {
+          setCurrentPatient(patient);
+          document.getElementById('patientSearch').value = "";
+      } else {
+          alert(`❌ 找不到編號為 [${queryId}] 的個案，請確認編號是否正確或建立新個案。`);
+      }
+  }
+
+  function setCurrentPatient(patient) {
+      currentPatient = patient;
+      let genderText = patient.gender === 'M' ? "男性" : "女性";
+      document.getElementById('currentPatientDisplay').innerHTML = `✅ 當前測試者：[${patient.id}] ${patient.name} (${genderText})`;
+      document.getElementById('currentPatientDisplay').style.borderColor = "#27ae60";
+      document.getElementById('currentPatientDisplay').style.color = "#27ae60";
+  }
+
+  function showHistory() {
+      if (!currentPatient) return alert("請先載入個案，才能查看專屬紀錄！");
+      
+      let pHistory = historyDB.filter(h => h.caseId === currentPatient.id).reverse(); // 最新的在前面
+      document.getElementById('historyTitle').innerText = `📁 [${currentPatient.id}] ${currentPatient.name} 的評估紀錄`;
+      
+      let listHTML = "";
+      if (pHistory.length === 0) {
+          listHTML = "<div style='text-align:center; padding: 20px; color:#888;'>目前尚無評估紀錄</div>";
+      } else {
+          const taskNames = {
+              'daily_posture': '日常姿態分析', 'caregiver_posture': '照服員防護分析',
+              'chair_stand': '椅子坐立測驗', 'arm_curl': '手臂屈舉測驗', 'single_leg': '單足立測試'
+          };
+          pHistory.forEach(record => {
+              listHTML += `
+                <div class="history-item">
+                    <strong>時間：</strong>${record.date}<br>
+                    <strong>項目：</strong>${taskNames[record.task] || record.task}<br>
+                    <strong>結果：</strong><span style="color:#2980b9;">${record.resultSummary}</span>
+                </div>
+              `;
+          });
+      }
+      document.getElementById('historyList').innerHTML = listHTML;
+      document.getElementById('historyModal').style.display = 'flex';
+  }
+
+  // ================= 影像與 AI 引擎 =================
+  const liveVideoElement = document.getElementById('live_video');
+  const importVideoElement = document.getElementById('import_video');
+  const canvasElement = document.getElementById('output_canvas');
+  const canvasCtx = canvasElement.getContext('2d');
+  const statusBar = document.getElementById('status-bar');
+  const startBtn = document.getElementById('startBtn');
+  const reportArea = document.getElementById('reportArea');
+  const assessmentSelect = document.getElementById('assessmentType');
+  const dbBtnUI = document.getElementById('dbBtnUI');
+  
+  let currentMode = 'live';
+  let isAnalyzing = false;
+  let camera = null;
+  let testPhase = "idle"; 
+  let timerStart = 0;
+  let motionLog = []; 
+  let repCounter = 0;
+  let movementState = "start";
+  let peakValue = 0; 
+  let dangerFlag = false;
+
+  let prevAnkles = null;    
+  let stableFrames = 0;     
+
+  let externalKnowledgeBase = "";
+  let externalKnowledgeFileName = "";
+
+  document.getElementById('dbInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+          externalKnowledgeBase = event.target.result;
+          externalKnowledgeFileName = file.name;
+          alert("✅ 成功導入文獻：" + file.name);
+          dbBtnUI.innerHTML = `✅ 已擴充：${file.name}<input type="file" id="dbInput" accept=".txt">`;
+          dbBtnUI.style.background = "#8e44ad";
+          dbBtnUI.style.color = "#fff";
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+  });
+
+  const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+  pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  pose.onResults(onResults);
+
+  function switchMode(mode) {
+    if(isAnalyzing) toggleAnalysis(); 
+
+    currentMode = mode;
+    isAnalyzing = false;
+    startBtn.innerText = "▶ 開始執行分析";
+    startBtn.classList.remove('running');
+    
+    document.getElementById('liveModeBtn').classList.toggle('active', mode === 'live');
+    document.getElementById('importModeBtn').classList.toggle('active', mode === 'import');
+    document.getElementById('uploadArea').style.display = mode === 'import' ? 'block' : 'none';
+    startBtn.style.display = mode === 'live' ? 'block' : 'none';
+
+    canvasElement.style.transform = (mode === 'live') ? 'scaleX(-1)' : 'scaleX(1)';
+
+    if (liveVideoElement.srcObject) {
+        liveVideoElement.srcObject.getTracks().forEach(track => track.stop());
+        liveVideoElement.srcObject = null;
+    }
+    if (camera) { camera.stop(); camera = null; }
+    
+    importVideoElement.pause();
+    importVideoElement.src = "";
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+    if (mode === 'live') {
+      statusBar.innerText = "系統狀態：啟動影像擷取設備中...";
+      setupCamera();
+    } else {
+      statusBar.innerText = "系統狀態：等待上傳個案影片";
+    }
+  }
+
+  function setupCamera() {
+    if (!camera) {
+      camera = new Camera(liveVideoElement, {
+        onFrame: async () => { await pose.send({image: liveVideoElement}); },
+        width: 640, height: 480
+      });
+    }
+    camera.start().then(() => { statusBar.innerText = "系統狀態：✅ 設備連線正常，可開始分析"; });
+  }
+
+  function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+      if(isAnalyzing) toggleAnalysis(); 
+      statusBar.innerText = "系統狀態：影片解碼中...";
+      importVideoElement.src = URL.createObjectURL(file);
+      importVideoElement.load();
+      importVideoElement.onloadeddata = () => {
+        canvasElement.width = importVideoElement.videoWidth;
+        canvasElement.height = importVideoElement.videoHeight;
+        canvasElement.style.aspectRatio = importVideoElement.videoWidth / importVideoElement.videoHeight;
+        canvasCtx.drawImage(importVideoElement, 0, 0, canvasElement.width, canvasElement.height);
+        statusBar.innerText = "系統狀態：✅ 影片載入完成";
+        startBtn.style.display = 'block';
+      };
+    }
+    event.target.value = '';
+  }
+
+  async function processVideoFrame() {
+    if (currentMode === 'import' && isAnalyzing && !importVideoElement.paused && !importVideoElement.ended) {
+      await pose.send({image: importVideoElement});
+      requestAnimationFrame(processVideoFrame);
+    } else if (currentMode === 'import' && importVideoElement.ended && isAnalyzing) {
+      toggleAnalysis(); 
+    }
+  }
+
+  function toggleAnalysis() {
+    if (!currentPatient && !confirm("⚠️ 您尚未載入個案編號！\n如果繼續執行，本次測試結果將不會被儲存至資料庫。是否要繼續？")) {
+        return;
+    }
+
+    if (!isAnalyzing) {
+      isAnalyzing = true;
+      motionLog = []; repCounter = 0; movementState = "start"; peakValue = 0; dangerFlag = false; prevAnkles = null; stableFrames = 0;
+      let task = assessmentSelect.value;
+      
+      if ((task === 'chair_stand' || task === 'arm_curl') && currentMode === 'live') {
+          testPhase = "countdown";
+      } else {
+          testPhase = "running";
+      }
+      
+      startBtn.innerText = "⏹ 停止分析並輸出報告";
+      startBtn.classList.add('running');
+      statusBar.innerText = "系統狀態：🔍 AI 空間基準點追蹤運算中...";
+      reportArea.innerHTML = "<div style='text-align:center; padding: 40px;'><h3 style='color:#3498db;'>資料運算中...</h3><p>系統自動計時與動作判定中</p></div>";
+      
+      if (currentMode === 'import') {
+        importVideoElement.currentTime = 0; 
+        timerStart = 0; 
+        importVideoElement.play().then(() => { processVideoFrame(); });
+      } else {
+        timerStart = Date.now() / 1000;
+      }
+    } else {
+      isAnalyzing = false;
+      testPhase = "idle";
+      startBtn.innerText = "▶ 開始執行分析";
+      startBtn.classList.remove('running');
+      statusBar.innerText = "系統狀態：✅ 評估完成";
+      if (currentMode === 'import') importVideoElement.pause();
+      generateCMReport();
+    }
+  }
+
+  function onResults(results) {
+    if(currentMode === 'live' && results.image && (canvasElement.width !== results.image.width)) {
+        canvasElement.width = results.image.width;
+        canvasElement.height = results.image.height;
+    }
+
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    const source = (currentMode === 'import') ? importVideoElement : liveVideoElement;
+    if(results.image || source.readyState >= 2) canvasCtx.drawImage(results.image || source, 0, 0, canvasElement.width, canvasElement.height);
+
+    dangerFlag = false;
+    let realTimeText = "";
+
+    if (results.poseLandmarks && isAnalyzing) {
+      drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#bdc3c7', lineWidth: 4});
+      drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#e74c3c', lineWidth: 2, radius: 4});
+
+      let task = assessmentSelect.value;
+      let lm = results.poseLandmarks;
+      let currentT = (currentMode === 'import') ? importVideoElement.currentTime : (Date.now() / 1000);
+
+      if (testPhase === "countdown") {
+          let elapsed = currentT - timerStart;
+          let remain = Math.ceil(3 - elapsed);
+          if (remain > 0) realTimeText = `⏳ 準備開始... ${remain}`;
+          else { testPhase = "running"; timerStart = currentT; repCounter = 0; }
+      }
+
+      if (testPhase === "running") {
+          if (task === 'daily_posture' || task === 'caregiver_posture') {
+              let shoulderX = (lm[11].x + lm[12].x) / 2, shoulderY = (lm[11].y + lm[12].y) / 2;
+              let hipX = (lm[23].x + lm[24].x) / 2, hipY = (lm[23].y + lm[24].y) / 2;
+              let trunkAngle = Math.atan2(Math.abs(shoulderX - hipX), Math.abs(shoulderY - hipY)) * (180 / Math.PI);
+              
+              if (trunkAngle > peakValue) peakValue = trunkAngle;
+              motionLog.push(shoulderX * 100);
+              if (trunkAngle > 40) { dangerFlag = true; realTimeText = `⚠️ 彎曲角度過大 (${Math.round(trunkAngle)}°)`; }
+          }
+          else if (task === 'chair_stand') {
+              let shoulderY = (lm[11].y + lm[12].y) / 2;
+              if (shoulderY < 0.48 && movementState === "start") { movementState = "up"; repCounter++; } 
+              else if (shoulderY > 0.52 && movementState === "up") { movementState = "start"; }
+
+              if (currentMode === 'live') {
+                  let remain = 30 - (currentT - timerStart);
+                  if (remain <= 0) { setTimeout(() => toggleAnalysis(), 0); return; }
+                  realTimeText = `⏱ 剩餘 ${Math.ceil(remain)} 秒 | 坐立次數：${repCounter}`;
+              } else { realTimeText = `▶ 影片分析中 | 坐立總數：${repCounter}`; }
+          } 
+          else if (task === 'arm_curl') {
+              let wristY = lm[16].y, elbowY = lm[14].y, shoulderY = lm[12].y;
+              if (wristY <= shoulderY + 0.05 && movementState === "start") { movementState = "up"; repCounter++; } 
+              else if (wristY >= elbowY && movementState === "up") { movementState = "start"; }
+
+              if (currentMode === 'live') {
+                  let remain = 30 - (currentT - timerStart);
+                  if (remain <= 0) { setTimeout(() => toggleAnalysis(), 0); return; }
+                  realTimeText = `⏱ 剩餘 ${Math.ceil(remain)} 秒 | 屈舉次數：${repCounter}`;
+              } else { realTimeText = `▶ 影片分析中 | 屈舉總數：${repCounter}`; }
+          }
+          else if (task === 'single_leg') {
+              let leftAnkle = lm[27], rightAnkle = lm[28];
+              let ankleDiff = Math.abs(leftAnkle.y - rightAnkle.y); 
+              let movement = 0;
+              if (prevAnkles) {
+                  movement += Math.abs(leftAnkle.x - prevAnkles.left.x) + Math.abs(leftAnkle.y - prevAnkles.left.y);
+                  movement += Math.abs(rightAnkle.x - prevAnkles.right.x) + Math.abs(rightAnkle.y - prevAnkles.right.y);
+              }
+              prevAnkles = { left: {x: leftAnkle.x, y: leftAnkle.y}, right: {x: rightAnkle.x, y: rightAnkle.y} };
+              let isStationary = movement < 0.015; 
+              
+              if (ankleDiff > 0.08) { 
+                  if (movementState === "start") { movementState = "lifted"; timerStart = currentT; motionLog = []; stableFrames = 0; }
+                  let currentDuration = currentT - timerStart;
+                  if (currentDuration > peakValue) peakValue = currentDuration;
+                  motionLog.push(lm[0].x * 100); 
+                  realTimeText = currentMode === 'import' ? `▶ 分析中 | 最大支撐：${peakValue.toFixed(1)} 秒` : `⏱ 支撐中：${currentDuration.toFixed(1)} 秒`;
+              } else { 
+                  if (movementState === "lifted") {
+                      if (currentMode === 'live') {
+                          if (ankleDiff < 0.04 && isStationary) {
+                              stableFrames++;
+                              if (stableFrames > 10) { setTimeout(() => toggleAnalysis(), 0); return; } 
+                              else { realTimeText = `⏱ 穩定判定中...`; dangerFlag = true; }
+                          } else {
+                              stableFrames = 0; realTimeText = `⚠️ 請雙腳踩平並保持靜止以結束`; dangerFlag = true;
+                          }
+                      } else { movementState = "start"; realTimeText = `▶ 分析中 | 最高紀錄：${peakValue.toFixed(1)} 秒`; }
+                  } else {
+                      realTimeText = currentMode === 'import' ? `▶ 等待動作...` : `請抬起單腳開始計時...`;
+                  }
+              }
+          }
+      }
+      
+      if (realTimeText !== "") {
+          canvasCtx.save();
+          if (currentMode === 'live') { canvasCtx.scale(-1, 1); canvasCtx.translate(-canvasElement.width, 0); }
+          let fontSize = Math.max(26, canvasElement.width / 25);
+          canvasCtx.font = `bold ${fontSize}px "微軟正黑體", sans-serif`;
+          canvasCtx.fillStyle = testPhase === "countdown" ? "#f1c40f" : (dangerFlag ? "#e74c3c" : "#2ecc71");
+          canvasCtx.strokeStyle = "#000"; canvasCtx.lineWidth = 4;
+          canvasCtx.strokeText(realTimeText, 20, 50); canvasCtx.fillText(realTimeText, 20, 50);
+          canvasCtx.restore();
+      }
+
+      if (dangerFlag) {
+          canvasCtx.strokeStyle = "rgba(231, 76, 60, 0.6)"; canvasCtx.lineWidth = 15;
+          canvasCtx.strokeRect(0, 0, canvasElement.width, canvasElement.height);
+      }
+    }
+    canvasCtx.restore();
+  }
+
+  const clinicalDB = {
+      daily_posture: function(val, log) {
+          let sway = log.length > 0 ? Math.round(Math.max(...log) - Math.min(...log)) : 0;
+          return {
+              data: `軀幹前傾峰值：${Math.round(val)}° | 重心晃動指數：${sway}`,
+              advice: (val > 40) ? "【跌倒警示】軀幹前傾角度過大。伴隨認知退化長者常因神經運動控制下降，出現重心前傾，跌倒機率大幅提升。" : "【防跌評估】步態重心穩定，跌倒風險落在可控範圍。",
+              plan: "1. 排除環境障礙物並增加夜間照明。<br>2. 建議介入「太極拳雙重任務訓練」，強化動態平衡感。"
+          };
+      },
+      caregiver_posture: function(val) {
+          return {
+              data: `轉移位最大彎腰角度：${Math.round(val)}°`,
+              advice: val > 45 ? "【職災通報】依據 NIOSH 標準，照服員前傾超過 45 度作業時，椎間盤承受之剪力極大，為嚴重危險動作。" : "【施力姿態評估】施力姿態良好，有保持脊椎中立位。",
+              plan: "嚴格落實「下蹲式轉移位」，靠近個案彎曲膝蓋，利用股四頭肌發力。建議搭配移位滑墊。"
+          };
+      },
+      chair_stand: function(rep) {
+          return {
+              data: `分析坐立完成次數：${rep} 次 (雙肩跨越中心點次數)`,
+              advice: rep < 10 ? "【下肢失能警示】股四頭肌之收縮力量嚴重衰退，將直接影響如廁、轉位之獨立性，是臥床的高風險指標。" : "【肌力評估】下肢肌耐力維持良好，具有獨立轉移位基礎能力。",
+              plan: "每週進行 3 次漸進式阻力訓練（使用彈力帶微蹲），每日執行 20 次安全扶手坐站練習。"
+          };
+      },
+      arm_curl: function(rep) {
+          return {
+              data: `分析屈舉完成次數：${rep} 次 (嚴格肩部判定)`,
+              advice: rep < 12 ? "【上肢保護力衰退】二頭肌力不足。容易影響進食能力；發生跌倒意外時，缺乏足夠的撐地防禦能力。" : "【肌力評估】上肢肌力充沛，關節活動度表現優良。",
+              plan: "利用裝水保特瓶或輕量沙袋，進行坐姿手臂屈伸訓練，維持日常生活獨立性。"
+          };
+      },
+      single_leg: function(log) {
+          let sway = log.length > 0 ? Math.round(Math.max(...log) - Math.min(...log)) : 0;
+          return {
+              data: `最佳單足支撐時間：${peakValue.toFixed(1)} 秒 | 平衡震盪指數：${sway}`,
+              advice: (peakValue < 5 || sway > 30) ? "【本體感覺異常】支撐時間短且晃動劇烈。顯示前庭神經或關節本體感覺退化，夜間如廁極易跌倒。" : "【平衡評估】神經肌肉控制力佳，姿勢代償能力正常。",
+              plan: "加強夜間巡視。安排「軟墊上原地踏步」刺激足底感覺神經，並加強下肢核心穩定。"
+          };
+      }
+  };
+
+  function generateCMReport() {
+      let task = assessmentSelect.value;
+      let cdssResult = {};
+      
+      if (task === 'daily_posture' || task === 'caregiver_posture') cdssResult = clinicalDB[task](peakValue, motionLog);
+      else if (task === 'chair_stand' || task === 'arm_curl') cdssResult = clinicalDB[task](repCounter);
+      else if (task === 'single_leg') cdssResult = clinicalDB[task](motionLog);
+
+      let html = `
+        <div class="cm-section"><div class="cm-header">📊 系統基準點量測數據</div><div class="cm-data">${cdssResult.data}</div></div>
+        <div class="cm-section"><div class="cm-header">👩‍⚕️ 臨床衛教與評估</div><div class="cm-advice">${cdssResult.advice}</div></div>
+        <div class="cm-section"><div class="cm-header">💪 復能訓練與照護計畫</div><div class="cm-plan">${cdssResult.plan}</div></div>
+      `;
+
+      if (externalKnowledgeBase !== "") {
+          let ragSnippet = `系統已整合匯入的專業文獻：<br><i>「${externalKnowledgeBase.substring(0, 60).replace(/\n/g, '')}...」</i>`;
+          html += `<div class="cm-section"><div class="cm-header">📚 擴充文獻庫理論 (${externalKnowledgeFileName})</div><div class="cm-rag">${ragSnippet}</div></div>`;
+      }
+
+      // 💡 資料庫儲存邏輯
+      if (currentPatient) {
+          let summaryStr = cdssResult.data.split('|')[0]; // 取數據重點
+          let newRecord = {
+              caseId: currentPatient.id,
+              date: new Date().toLocaleString(),
+              task: task,
+              resultSummary: summaryStr
+          };
+          historyDB.push(newRecord);
+          localStorage.setItem('cdss_history', JSON.stringify(historyDB));
+          
+          html += `<div class="db-save-notice">💾 本次測驗數據已自動歸檔至個案 [${currentPatient.id}] 歷史紀錄中。</div>`;
+      }
+
+      reportArea.innerHTML = html;
+  }
+
+  // 初始載入與事件綁定
+  switchMode('live');
+</script>
+</body>
+</html>
